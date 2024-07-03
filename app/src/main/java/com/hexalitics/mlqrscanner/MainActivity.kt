@@ -2,6 +2,7 @@ package com.hexalitics.mlqrscanner
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -13,6 +14,7 @@ import android.util.DisplayMetrics
 import android.util.Log
 import android.util.Size
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -33,6 +35,7 @@ import com.afollestad.materialdialogs.MaterialDialog
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.hexalitics.mlqrscanner.databinding.ActivityMainBinding
+import com.hexalitics.mlqrscanner.databinding.DialogScanResultBinding
 import com.hexalitics.mlqrscanner.helper.BaseActivity
 import com.hexalitics.mlqrscanner.helper.QRAnalyzer
 import kotlinx.coroutines.CoroutineScope
@@ -85,6 +88,7 @@ class MainActivity : AppCompatActivity(), EasyPermissions.PermissionCallbacks {
 
     private var isFlashOn = false
     private lateinit var imageCapture: ImageCapture
+    private var isPopupVisible = false
 
     //Region MARK: - public methods
     override fun onResume() {
@@ -171,24 +175,33 @@ class MainActivity : AppCompatActivity(), EasyPermissions.PermissionCallbacks {
                         scaleFactorY = binding.previewView.height.toFloat() / inputImage.height
                         scaleFactorX = binding.previewView.width.toFloat() / inputImage.width
                     }
-                    barcode.boundingBox?.let { rect ->
-                        val qrCoreRect = translateRect(rect)
-                        if (rec2.contains(qrCoreRect)) {
-                            if (stopScanner.not()) {
-                                stopScanner = true
-                                cameraProvider.unbindAll()
-                                MaterialDialog(this@MainActivity).show {
-                                    title(R.string.app_name)
-                                    message(text = barcode.rawValue?.toString())
-                                    positiveButton(R.string.close) {
-                                        stopScanner = false
-                                        mCamera = cameraProvider.bindToLifecycle(
-                                            this@MainActivity as LifecycleOwner,
-                                            cameraSelector,
-                                            imageAnalysis,
-                                            preview
-                                        )
-                                    }
+                    if (!isPopupVisible) {
+                        barcode.boundingBox?.let { rect ->
+                            val qrCoreRect = translateRect(rect)
+                            if (rec2.contains(qrCoreRect)) {
+                                if (stopScanner.not()) {
+                                    stopScanner = true
+                                    // cameraProvider.unbindAll()
+                                    openResultDialog(
+                                        cameraSelector,
+                                        imageAnalysis,
+                                        preview,
+                                        barcode,
+                                        inputImage
+                                    )
+                                    /*MaterialDialog(this@MainActivity).show {
+                                        title(R.string.app_name)
+                                        message(text = barcode.rawValue?.toString())
+                                        positiveButton(R.string.close) {
+                                            stopScanner = false
+                                            mCamera = cameraProvider.bindToLifecycle(
+                                                this@MainActivity as LifecycleOwner,
+                                                cameraSelector,
+                                                imageAnalysis,
+                                                preview
+                                            )
+                                        }
+                                    }*/
                                 }
                             }
                         }
@@ -324,4 +337,41 @@ class MainActivity : AppCompatActivity(), EasyPermissions.PermissionCallbacks {
         private const val RATIO_16_9_VALUE = 16.0 / 9.0
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
     }
+
+
+    private fun openResultDialog(cameraSelector: CameraSelector,
+                                 imageAnalysis: ImageAnalysis,
+                                 preview: Preview,
+                                 barcode: Barcode,
+                                 inputImage: InputImage) {
+        val dialogBox = AlertDialog.Builder(this)
+        dialogBox.setCancelable(false)
+
+        val scanBinding = DialogScanResultBinding.inflate(layoutInflater)
+        dialogBox.setView(scanBinding.root)
+        val alertDialog = dialogBox.create()
+        alertDialog.window!!.setBackgroundDrawableResource(android.R.color.transparent)
+
+        isPopupVisible = true
+
+        scanBinding.ivQR.setImageBitmap(inputImage.bitmapInternal)
+        scanBinding.tvResult.text = barcode.rawValue
+
+
+        scanBinding.tvCancel.setOnClickListener {
+            cameraProvider?.unbindAll()
+            stopScanner = false
+            mCamera = cameraProvider?.bindToLifecycle(
+                this@MainActivity as LifecycleOwner,
+                cameraSelector,
+                imageAnalysis,
+                preview
+            )
+            isPopupVisible = false
+            alertDialog.dismiss()
+        }
+
+        alertDialog.show()
+    }
+
 }
